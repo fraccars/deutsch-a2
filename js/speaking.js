@@ -9,18 +9,23 @@ import { registrar, sumarXP, actividad } from './store.js';
 import { CIFRADO } from './modo.js';
 import { cargarJSON, urlMedio } from './archivos.js';
 import { reconocer, vozDisponible, vozLista } from './voz.js';
+import { capituloActual, porCapitulo, rutaDatos } from './capitulos.js';
 
+// Los bloques de un capítulo y los tramos del libro que sirven de modelo.
+export const datosSpeaking = porCapitulo((cap) => Promise.all([
+  cargarJSON(rutaDatos('speaking.json', cap)),
+  cargarJSON(rutaDatos('segmentos.json', cap)).catch(() => ({})),
+]).then(([datos, segmentos]) => ({ datos, segmentos })));
+
+// Los del capítulo actual, para la pantalla.
 let DATOS = null;
 let SEGMENTOS = {};
 export async function cargarSpeaking() {
-  if (!DATOS) {
-    [DATOS, SEGMENTOS] = await Promise.all([
-      cargarJSON('data/k07/speaking.json'),
-      cargarJSON('data/k07/segmentos.json').catch(() => ({})),
-    ]);
-  }
+  ({ datos: DATOS, segmentos: SEGMENTOS } = await datosSpeaking());
   return DATOS;
 }
+// Los intentos de un ítem (los de antes de haber varios capítulos son del K7).
+export const intentosDe = (cap, item) => actividad().filter((a) => a.tipo === 'speaking' && a.item === item && (a.cap ?? 'k07') === cap);
 
 // ---------- Normalización (las mismas reglas que tools/segmentar.py) ----------
 const UNIDADES = ['null', 'eins', 'zwei', 'drei', 'vier', 'fünf', 'sechs', 'sieben', 'acht', 'neun', 'zehn', 'elf', 'zwölf', 'dreizehn', 'vierzehn', 'fünfzehn', 'sechzehn', 'siebzehn', 'achtzehn', 'neunzehn'];
@@ -267,7 +272,7 @@ function vistaItem(set, item, i, alTerminar) {
   function mostrarResultado(res) {
     const ev = esLectura ? evaluarLectura(item.de, res) : evaluarRespuesta(item, res);
     const pct = Math.round(ev.puntaje * 100);
-    registrar({ tipo: 'speaking', set: set.id, item: item.id, modo: item.tipo, puntaje: ev.puntaje });
+    registrar({ tipo: 'speaking', cap: capituloActual(), set: set.id, item: item.id, modo: item.tipo, puntaje: ev.puntaje });
     const xp = Math.round(ev.puntaje * 5);
     if (xp) (sumarXP(xp), xpFlotante(xp, botonGrabar));
     const msg = ev.puntaje >= 0.9 ? ['bien', 'Excellent! 🎉'] : ev.puntaje >= 0.7 ? ['medio', esLectura ? 'Good! Practice the highlighted words and try again.' : 'Good! Try to add what is missing.'] : ['mal', esLectura ? 'Not quite. Listen to the model, then try again.' : 'Try again using the hints below.'];
@@ -304,8 +309,8 @@ function vistaItem(set, item, i, alTerminar) {
 }
 
 // ---------- Pantallas ----------
-const mejores = (set) => set.items.map((it) => Math.max(0, ...actividad().filter((a) => a.tipo === 'speaking' && a.item === it.id).map((a) => a.puntaje)));
-const intentados = (set) => set.items.filter((it) => actividad().some((a) => a.tipo === 'speaking' && a.item === it.id)).length;
+const mejores = (set) => set.items.map((it) => Math.max(0, ...intentosDe(capituloActual(), it.id).map((a) => a.puntaje)));
+const intentados = (set) => set.items.filter((it) => intentosDe(capituloActual(), it.id).length).length;
 
 export async function pantallaSpeaking(raiz, setId) {
   await cargarSpeaking();

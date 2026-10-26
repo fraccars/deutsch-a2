@@ -5,6 +5,7 @@ import { corregir, diferencias } from './check.js';
 import { decir, botonDecir, reproductorPista, pistasLibro } from './audio.js';
 import { sumarXP } from './store.js';
 import { ejercicioMapa } from './mapa.js';
+import { visorLibro } from './visor.js';
 
 const XP_ACIERTO = 2;
 
@@ -244,6 +245,32 @@ const TIPOS = {
 
   mapa(p, ctx) {
     return ejercicioMapa(p, ctx, premio);
+  },
+
+  // Ejercicio del libro: se hace en la página escaneada (📖) y se corrige con la solución
+  // oficial de las Lösungen, que permiten la copia para uso propio. El curso no copia el
+  // ejercicio: el enunciado del paso solo dice qué hacer. Sin solución (producción libre),
+  // se marca como hecho.
+  libro(p, ctx) {
+    const terminar = (a, t, el) => {
+      cont.querySelectorAll('.libro-fin button').forEach((b) => (b.disabled = true));
+      if (a === t) premio(el);
+      ctx.listo(a, t);
+    };
+    const fin = h('div', { class: 'fila-btn izq libro-fin oculto' }, p.solucion
+      ? [h('button', { class: 'btn bien', type: 'button', onclick: (e) => terminar(1, 1, e.currentTarget) }, '✓ All correct'),
+        h('button', { class: 'btn', type: 'button', onclick: (e) => terminar(1, 2, e.currentTarget) }, 'A few mistakes'),
+        h('button', { class: 'btn mal', type: 'button', onclick: (e) => terminar(0, 1, e.currentTarget) }, 'Many mistakes')]
+      : h('button', { class: 'btn primario', type: 'button', onclick: (e) => terminar(1, 1, e.currentTarget) }, 'Done'));
+    const solucion = p.solucion && h('div', { class: 'modelo oculto' },
+      h('div', { class: 'modelo-tit' }, 'Official solution'), [p.solucion].flat().map((s) => h('p', { lang: 'de' }, s)));
+    const mostrar = h('button', { class: 'btn', type: 'button', onclick: () => (mostrar.remove(), solucion?.classList.remove('oculto'), fin.classList.remove('oculto')) },
+      p.solucion ? 'Show the solution' : 'I did it');
+    const cont = h('div', { class: 'libro-ej' },
+      h('div', { class: 'fila-btn izq' },
+        h('button', { class: 'btn primario', type: 'button', onclick: () => visorLibro([p.pagina, ...(p.masPaginas ?? [])]) }, '📖 Open the page'), mostrar),
+      solucion, fin);
+    return cont;
   },
 };
 

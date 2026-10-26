@@ -4,10 +4,13 @@ import { decir, botonDecir } from './audio.js';
 import { corregir } from './check.js';
 import { calificar, pendiente, tarjeta, sumarXP, ajuste, registrar } from './store.js';
 import { cargarJSON } from './archivos.js';
+import { capituloActual, numeroCapitulo, porCapitulo, rutaDatos } from './capitulos.js';
 
+// El vocabulario del capítulo actual (los entrenadores trabajan sobre el capítulo que se mira).
+const vocabDe = porCapitulo((cap) => cargarJSON(rutaDatos('vocabulario.json', cap)));
 let VOCAB = [];
 export async function cargarVocab() {
-  if (!VOCAB.length) VOCAB = await cargarJSON('data/k07/vocabulario.json');
+  VOCAB = await vocabDe();
   return VOCAB;
 }
 
@@ -19,6 +22,8 @@ const esSust = (v) => v.tipo === 'sustantivo' && v.art;
 export const conArticulo = (v) => (esSust(v) ? `${v.art} ${v.de}` : v.de);
 const claveV = (v) => `v:${conArticulo(v)}`;
 const sinPlural = (v) => !!v.soloSingular || !v.plForm;
+// Solo plural (die Magenschmerzen): no entra en el sprint de artículos ni en la ronda de plurales.
+const soloPlural = (v) => v.pl === 'Pl.';
 
 export function etiquetaPalabra(v, { plural = true } = {}) {
   return h('span', { class: 'palabra' },
@@ -77,7 +82,7 @@ function puntaje(bien, el) {
 }
 
 function fin(cont, aciertos, total, volver, otra, modo) {
-  registrar({ tipo: 'ronda', area: 'vocabulario', modo, aciertos, total });
+  registrar({ tipo: 'ronda', cap: capituloActual(), area: 'vocabulario', modo, aciertos, total });
   if (aciertos === total && total >= 5) confeti();
   cont.replaceChildren(h('div', { class: 'fin-ronda' },
     h('div', { class: 'fin-num' }, `${aciertos} / ${total}`),
@@ -131,7 +136,7 @@ const MODOS = {
     desc: 'der, die or das? 60-second race against the clock. Correct answers in a row build a combo.',
     icono: '⚡',
     jugar(cont, volver) {
-      const sust = VOCAB.filter(esSust);
+      const sust = VOCAB.filter((v) => esSust(v) && !soloPlural(v));
       let restante = 60;
       let puntos = 0;
       let combo = 0;
@@ -190,7 +195,7 @@ const MODOS = {
           document.removeEventListener('keydown', teclas);
           if (!cont.isConnected) return;
           sumarXP(puntos);
-          registrar({ tipo: 'ronda', area: 'vocabulario', modo: 'articulo', puntos, total });
+          registrar({ tipo: 'ronda', cap: capituloActual(), area: 'vocabulario', modo: 'articulo', puntos, total });
           const record = Math.max(ajuste('recordArticulo') ?? 0, puntos);
           const nuevoRecord = puntos > (ajuste('recordArticulo') ?? 0);
           ajuste('recordArticulo', record);
@@ -210,7 +215,7 @@ const MODOS = {
     desc: 'Type the plural with its article (die …). Words with no plural show up too.',
     icono: '👥',
     jugar(cont, volver) {
-      const lista = ronda(esSust, 10);
+      const lista = ronda((v) => esSust(v) && !soloPlural(v), 10);
       let i = 0;
       let bien = 0;
       const sig = () => {
@@ -384,7 +389,7 @@ export async function pantallaVocab(raiz, modo, volver) {
   const sust = VOCAB.filter(esSust).length;
   raiz.replaceChildren(
     h('div', { class: 'seccion-cab' }, h('a', { class: 'btn-volver', href: '#/' }, '← Home'), h('h1', {}, 'Vocabulary'),
-      h('p', { class: 'sub' }, `${e.total} words in chapter 7 (${sust} nouns) · ${e.aprendidas} learned · ${e.vencidas} to review today`),
+      h('p', { class: 'sub' }, `${e.total} words in chapter ${numeroCapitulo()} (${sust} nouns) · ${e.aprendidas} learned · ${e.vencidas} to review today`),
       h('div', { class: 'barra' }, h('div', { class: 'barra-valor', style: { width: `${(e.aprendidas / Math.max(1, e.total)) * 100}%` } }))),
     h('div', { class: 'grilla-modos' }, Object.entries(MODOS).map(([k, m]) => h('a', { class: 'modo', href: `#/vocabulario/${k}` }, h('span', { class: 'modo-ico' }, m.icono), h('span', { class: 'modo-tit' }, m.titulo), h('span', { class: 'modo-desc' }, m.desc)))),
     h('div', { class: 'tip' }, '💡 The colors never change: ', h('span', { class: 'art der' }, 'der'), ' blue, ', h('span', { class: 'art die' }, 'die'), ' pink, ', h('span', { class: 'art das' }, 'das'), ' purple, and the plural ending in light emerald green (',

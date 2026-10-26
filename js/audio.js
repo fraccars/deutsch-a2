@@ -8,6 +8,7 @@ import { ajuste, registrar } from './store.js';
 import { textoHablado, claveTTS } from './tts-clave.js';
 import { CIFRADO } from './modo.js';
 import { cargarJSON, urlMedio, urlMedioLista } from './archivos.js';
+import { porCapitulo, rutaDatos } from './capitulos.js';
 
 let manifiesto = {};
 export async function cargarManifiesto() {
@@ -90,11 +91,8 @@ export function botonDecir(texto, etiqueta = 'Listen') {
   return h('button', { class: 'btn-icono', type: 'button', title: etiqueta, 'aria-label': `${etiqueta}: ${texto}`, onclick: (e) => (e.stopPropagation(), decir(texto)) }, '🔊');
 }
 
-let pistas = null;
-export async function pistasLibro() {
-  if (!pistas) pistas = await cargarJSON('data/k07/audios.json');
-  return pistas;
-}
+// Las pistas del capítulo (el actual, si no se dice cuál).
+export const pistasLibro = porCapitulo((cap) => cargarJSON(rutaDatos('audios.json', cap)));
 
 // En la página publicada, una pista del libro se descifra cuando está por verse, no antes: en
 // «Listening» hay nueve pistas de varios MB.

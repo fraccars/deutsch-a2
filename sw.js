@@ -9,8 +9,8 @@
 //   cáscara espera instalada hasta que la app la activa («New version available»).
 // El modelo de voz no pasa por acá: vosk-browser lo guarda en IndexedDB la primera vez.
 // tools/publicar-web.mjs completa VERSION y CASCARA.
-const VERSION = '966f01d415ad';
-const CASCARA = ["contenido.json","css/app.css","iconos/apple-touch-icon.png","iconos/icono-192.png","iconos/icono-32.png","iconos/icono-512.png","iconos/icono-maskable-512.png","iconos/icono.svg","index.html","js/archivos.js","js/audio.js","js/capitulo.js","js/check.js","js/combinar.js","js/ejercicios.js","js/glosa.js","js/main.js","js/mapa.js","js/modo.js","js/nube-config.js","js/nube.js","js/perfil.js","js/plan.js","js/pwa.js","js/sincro.js","js/speaking.js","js/store.js","js/tts-clave.js","js/ui.js","js/verbos.js","js/vocab.js","js/voz.js","manifest.webmanifest","vendor/firebase/firebase-app.js","vendor/firebase/firebase-auth.js","vendor/firebase/firebase-firestore-lite.js"];
+const VERSION = '447a1a5e22d6';
+const CASCARA = ["contenido.json","css/app.css","iconos/apple-touch-icon.png","iconos/icono-192.png","iconos/icono-32.png","iconos/icono-512.png","iconos/icono-maskable-512.png","iconos/icono.svg","index.html","js/archivos.js","js/audio.js","js/capitulo.js","js/capitulos.js","js/check.js","js/combinar.js","js/ejercicios.js","js/glosa.js","js/main.js","js/mapa.js","js/modo.js","js/nube-config.js","js/nube.js","js/perfil.js","js/plan.js","js/pwa.js","js/sincro.js","js/speaking.js","js/store.js","js/tts-clave.js","js/ui.js","js/verbos.js","js/visor.js","js/vocab.js","js/voz.js","manifest.webmanifest","vendor/firebase/firebase-app.js","vendor/firebase/firebase-auth.js","vendor/firebase/firebase-firestore-lite.js"];
 const CACHE_CASCARA = `cascara-${VERSION}`;
 const CACHE_CONTENIDO = 'contenido';
 

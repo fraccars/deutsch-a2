@@ -10,10 +10,12 @@ import { pantallaPlan, tarjetaPlan, vigilar } from './plan.js';
 import { pantallaSpeaking } from './speaking.js';
 import { activarGlosa, cargarGlosario } from './glosa.js';
 import { CIFRADO } from './modo.js';
-import { hayClave, urlMedio } from './archivos.js';
+import { hayClave } from './archivos.js';
 import { iniciarSincro, alCambiarSincro, estadoSincro } from './sincro.js';
 import { pantallaPerfil, pantallaEntrada, fichaCuenta } from './perfil.js';
 import { registrarSW, bajarParaSinInternet, pedirPersistencia } from './pwa.js';
+import { cargarIndice, indiceCapitulos, elegirCapitulo } from './capitulos.js';
+import { visorLibro } from './visor.js';
 
 const raiz = document.getElementById('app');
 let CAP = null;
@@ -34,6 +36,16 @@ function barraEstado() {
     fichaCuenta());
 }
 
+// Para cambiar de capítulo (solo si hay más de uno).
+function selectorCapitulos() {
+  const caps = indiceCapitulos();
+  if (caps.length < 2) return null;
+  return h('nav', { class: 'capitulos', 'aria-label': 'Chapters' }, caps.map((c) => h('button', {
+    class: `chip ${c.id === CAP.id ? 'activo' : ''}`, type: 'button', title: c.titulo, 'aria-pressed': String(c.id === CAP.id),
+    onclick: () => c.id !== CAP.id && (elegirCapitulo(c.id), ruta()),
+  }, `Kapitel ${c.numero}`)));
+}
+
 async function inicio() {
   await Promise.all([cargarCapitulo(), cargarVocab(), cargarVerbos()]);
   const lecciones = CAP.lecciones.filter((l) => l.id !== 'test');
@@ -42,9 +54,10 @@ async function inicio() {
   const ev = estadisticasVocab();
   const eb = estadisticasVerbos();
   const semana = await tarjetaPlan();
-  const conPlan = !!leer().plan;
+  const conPlan = leer().plan?.capitulo === CAP.id;
   raiz.replaceChildren(
     h('header', { class: 'hero' },
+      selectorCapitulos(),
       h('div', { class: 'hero-cap' }, `${CAP.libro} · Kapitel ${CAP.numero}`),
       h('h1', { class: 'hero-tit' }, CAP.titulo),
       h('p', { class: 'hero-sub' }, CAP.subtitulo),
@@ -58,7 +71,7 @@ async function inicio() {
         h('a', { class: 'tarjeta-sec vocab', href: '#/vocabulario' }, h('span', { class: 'sec-ico' }, '🗂️'), h('span', { class: 'sec-tit' }, 'Vocabulary'), h('span', { class: 'sec-desc' }, 'Always with article and plural'), h('span', { class: 'sec-meta' }, ev.vencidas ? `${ev.vencidas} to review today` : `${ev.aprendidas} / ${ev.total} learned`)),
         h('a', { class: 'tarjeta-sec habla', href: '#/speaking' }, h('span', { class: 'sec-ico' }, '🎙️'), h('span', { class: 'sec-tit' }, 'Speaking'), h('span', { class: 'sec-desc' }, 'Read aloud and answer: a local checker corrects you'), h('span', { class: 'sec-meta' }, 'Microphone')),
         h('a', { class: 'tarjeta-sec audio', href: '#/escuchar' }, h('span', { class: 'sec-ico' }, '🎧'), h('span', { class: 'sec-tit' }, 'Listening'), h('span', { class: 'sec-desc' }, 'All the audio of the chapter'), h('span', { class: 'sec-meta' }, 'Kursbuch & Übungsbuch')),
-        h('a', { class: 'tarjeta-sec grama', href: '#/gramatica' }, h('span', { class: 'sec-ico' }, '📐'), h('span', { class: 'sec-tit' }, 'Grammar'), h('span', { class: 'sec-desc' }, 'Quick reference'), h('span', { class: 'sec-meta' }, 'Fragesätze · Präpositionen')))),
+        h('a', { class: 'tarjeta-sec grama', href: '#/gramatica' }, h('span', { class: 'sec-ico' }, '📐'), h('span', { class: 'sec-tit' }, 'Grammar'), h('span', { class: 'sec-desc' }, 'Quick reference'), h('span', { class: 'sec-meta' }, CAP.gramatica)))),
     h('section', { class: 'bloque' },
       h('h2', { class: 'bloque-tit' }, 'Lessons'),
       h('ol', { class: 'camino' }, lecciones.map((l, i) => {
@@ -138,33 +151,6 @@ async function leccion(id, desde) {
   mostrar();
 }
 
-// Páginas escaneadas del libro: "kb-084" = Kursbuch pág. 84, "ub-090" = Übungsbuch pág. 90.
-export function visorLibro(paginas) {
-  const nombre = (p) => `${p.startsWith('kb') ? 'Kursbuch' : 'Übungsbuch'} · p. ${Number(p.slice(3))}`;
-  let i = 0;
-  const img = h('img', { class: 'visor-img', alt: '' });
-  const tit = h('span', { class: 'visor-tit' });
-  const pintar = () => {
-    const k = i;
-    urlMedio(`media/paginas/${paginas[k]}.jpg`).then((url) => k === i && (img.src = url), (e) => k === i && aviso(e.message, 'mal'));
-    img.alt = nombre(paginas[i]);
-    tit.textContent = `${nombre(paginas[i])}  (${i + 1}/${paginas.length})`;
-    img.classList.remove('zoom');
-  };
-  const dlg = h('dialog', { class: 'visor' },
-    h('div', { class: 'visor-cab' },
-      h('button', { class: 'chip', type: 'button', disabled: paginas.length < 2, onclick: () => ((i = (i - 1 + paginas.length) % paginas.length), pintar()) }, '←'),
-      tit,
-      h('button', { class: 'chip', type: 'button', disabled: paginas.length < 2, onclick: () => ((i = (i + 1) % paginas.length), pintar()) }, '→'),
-      h('button', { class: 'chip', type: 'button', onclick: () => dlg.close() }, 'Close ✕')),
-    h('div', { class: 'visor-cuerpo' }, img));
-  img.addEventListener('click', () => img.classList.toggle('zoom'));
-  dlg.addEventListener('close', () => dlg.remove());
-  document.body.append(dlg);
-  pintar();
-  dlg.showModal();
-}
-
 async function escuchar() {
   const pistas = await pistasLibro();
   const grupos = [['Kursbuch', pistas.filter((p) => p.id.startsWith('KB'))], ['Übungsbuch', pistas.filter((p) => !p.id.startsWith('KB'))]];
@@ -180,7 +166,7 @@ async function gramatica() {
   const pasos = await Promise.all(fichas.map((p) => renderPaso({ ...p, ref: undefined }, { listo: () => {} })));
   pasos.forEach((el) => el.querySelector('.teoria > .btn')?.remove());
   raiz.replaceChildren(
-    h('div', { class: 'seccion-cab' }, h('a', { class: 'btn-volver', href: '#/' }, '← Home'), h('h1', {}, 'Chapter 7 grammar')),
+    h('div', { class: 'seccion-cab' }, h('a', { class: 'btn-volver', href: '#/' }, '← Home'), h('h1', {}, `Chapter ${CAP.numero} grammar`)),
     ...pasos.map((el, k) => h('section', { class: 'bloque ficha-grama' }, el, h('a', { class: 'enlace', href: `#/leccion/${fichas[k].lec.id}` }, `Practice in “${fichas[k].lec.titulo}” →`))));
 }
 
@@ -218,6 +204,7 @@ async function arrancar() {
     registrarSW();
     if (!(await hayClave())) return pantallaEntrada(raiz);
   }
+  await cargarIndice();
   addEventListener('hashchange', () => (callar(), ruta()));
   alCambiar((_, externo) => {
     const e = document.querySelector('.estado');

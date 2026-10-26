@@ -2,6 +2,8 @@
 // con tareas concretas (lecciones, rondas de entrenadores, audios del libro, speaking) que se
 // marcan solas a medida que se cumplen. Motiva con el ritmo de la semana, la racha,
 // logros, festejos al completar cada día y recordatorios para el calendario (.ics).
+// Hay un plan a la vez: el del capítulo con que se empezó (configPlan().capitulo). Empezar el
+// de otro capítulo lo reemplaza; las lecciones hechas y los logros quedan.
 // También lleva el progreso a otra computadora (exportar e importar un .json), deja volver
 // a una de las copias automáticas que guarda el servidor del curso (versión local) y muestra
 // la cuenta en la nube, que sincroniza sola entre equipos.
@@ -10,16 +12,14 @@ import { actividad, configPlan, logros, desbloquearLogro, hoyISO, ajuste, rachaA
 import { cargarCapitulo, progresoLeccion, puntajeLeccion } from './capitulo.js';
 import { cargarVocab, estadisticasVocab, modosVocab } from './vocab.js';
 import { cargarVerbos, estadisticasVerbos, modosVerbos } from './verbos.js';
-import { cargarSpeaking } from './speaking.js';
+import { datosSpeaking } from './speaking.js';
+import { pistasLibro } from './audio.js';
 import { cargarJSON } from './archivos.js';
 import { CIFRADO } from './modo.js';
 import { estadoSincro, textoSincro } from './sincro.js';
+import { capituloActual, numeroCapitulo, porCapitulo, rutaDatos } from './capitulos.js';
 
-let PLAN = null;
-export async function cargarPlan() {
-  if (!PLAN) PLAN = await cargarJSON('data/k07/plan.json');
-  return PLAN;
-}
+export const cargarPlan = porCapitulo((cap) => cargarJSON(rutaDatos('plan.json', cap)));
 
 // ---------- Fechas (siempre locales, en formato AAAA-MM-DD) ----------
 const aFecha = (iso) => {
@@ -62,8 +62,10 @@ function describir(t, CAP, SPK) {
 /** Estado del plan: tareas cumplidas, día de hoy, atrasos y la próxima tarea. */
 export function evaluar(P, CAP, SPK, cfg = configPlan()) {
   if (!cfg) return null;
-  // Solo cuenta lo hecho desde el comienzo del plan; cada ronda cumple una sola tarea.
-  const acts = actividad().filter((a) => a.dia >= cfg.inicio);
+  // Solo cuenta lo hecho desde el comienzo del plan y, en rondas y speaking, en el capítulo
+  // del plan (lo de antes de haber varios capítulos es del K7); cada ronda cumple una sola tarea.
+  const delCapitulo = (a) => (a.tipo !== 'ronda' && a.tipo !== 'speaking') || (a.cap ?? 'k07') === cfg.capitulo;
+  const acts = actividad().filter((a) => a.dia >= cfg.inicio && delCapitulo(a));
   const usadas = new Set();
   const tomar = (cumple, n) => {
     let k = 0;
@@ -114,7 +116,7 @@ export function evaluar(P, CAP, SPK, cfg = configPlan()) {
   const pendientesHoy = [...atrasadas, ...deHoy.filter((t) => !t.hecha)];
   const hechas = todas.filter((t) => t.hecha).length;
   return {
-    cfg, dias, hoyIdx, todas, hechas, total: todas.length, atrasadas, deHoy, pendientesHoy,
+    cfg, numero: CAP.numero, dias, hoyIdx, todas, hechas, total: todas.length, atrasadas, deHoy, pendientesHoy,
     adelantadas: dias.slice(Math.max(0, hoyIdx + 1)).flatMap((d) => d.tareas).filter((t) => t.hecha).length,
     siguiente: pendientesHoy[0] ?? todas.find((t) => !t.hecha) ?? null,
     fin: sumarDias(cfg.inicio, dias.length - 1),
@@ -122,10 +124,14 @@ export function evaluar(P, CAP, SPK, cfg = configPlan()) {
   };
 }
 
-export async function evaluarAhora(cfg) {
-  const [P, CAP, , , SPK] = await Promise.all([cargarPlan(), cargarCapitulo(), cargarVocab(), cargarVerbos(), cargarSpeaking()]);
+/** El plan en curso (o el que se pase), con los datos de su capítulo. */
+export async function evaluarAhora(cfg = configPlan()) {
+  const cap = cfg?.capitulo ?? capituloActual();
+  const [P, CAP, { datos: SPK }] = await Promise.all([cargarPlan(cap), cargarCapitulo(cap), datosSpeaking(cap), cargarVocab(), cargarVerbos()]);
   return evaluar(P, CAP, SPK, cfg);
 }
+// ¿El plan en curso es del capítulo que se está mirando?
+const planDelActual = () => configPlan()?.capitulo === capituloActual();
 
 // ---------- Logros ----------
 const LOGROS = [
@@ -140,14 +146,22 @@ const LOGROS = [
   { id: 'verbos-300', icono: '🔁', titulo: 'Verb machine', desc: 'Master 300 verb forms', cond: (c) => c.formas >= 300 },
   { id: 'primeras-palabras', icono: '🎙️', titulo: 'First words', desc: 'Do your first speaking exercise', cond: (c) => c.speaking >= 1 },
   { id: 'voz-clara', icono: '🗣️', titulo: 'Clear speaker', desc: 'Read 10 different sentences aloud with 90%+', cond: (c) => c.frasesClaras >= 10 },
-  { id: 'oido', icono: '🎧', titulo: 'All ears', desc: 'Listen to every Kursbuch track of the chapter', cond: (c) => c.pistasOidas >= 9 },
-  { id: 'test', icono: '🏁', titulo: 'Chapter champion', desc: 'Pass the final test with 80%+', cond: (c) => c.testOk },
-  { id: 'semana', icono: '🏆', titulo: 'Chapter in a week', desc: 'Complete the whole plan within 7 days', cond: (c) => c.semana },
+  // Estos tres son de cada capítulo.
+  { id: 'oido', icono: '🎧', titulo: 'All ears', desc: 'Listen to every Kursbuch track of the chapter', porCapitulo: true, cond: (c) => c.pistasKB > 0 && c.pistasOidas >= c.pistasKB },
+  { id: 'test', icono: '🏁', titulo: 'Chapter champion', desc: 'Pass the final test with 80%+', porCapitulo: true, cond: (c) => c.testOk },
+  { id: 'semana', icono: '🏆', titulo: 'Chapter in a week', desc: 'Complete the whole plan within 7 days', porCapitulo: true, cond: (c) => c.semana },
 ];
+// Los del K7 conservan el id de antes de haber varios capítulos; los demás llevan el suyo.
+const idLogro = (l, cap) => (l.porCapitulo && cap !== 'k07' ? `${l.id}-${cap}` : l.id);
 
-function contexto(ev) {
+// pistas: las del capítulo (del plan o el actual), para «All ears».
+function contexto(ev, pistas) {
   const acts = actividad();
+  const delLibro = pistas.filter((p) => p.id.startsWith('KB') && p.archivo).map((p) => p.id);
+  const oidas = new Set(acts.filter((a) => a.tipo === 'escucha').map((a) => a.pista));
   return {
+    pistasKB: delLibro.length,
+    pistasOidas: delLibro.filter((p) => oidas.has(p)).length,
     hechas: ev?.hechas ?? 0,
     diasCompletos: ev ? ev.dias.filter((d) => d.estado === 'hecho').length : 0,
     racha: rachaActual(),
@@ -155,7 +169,6 @@ function contexto(ev) {
     recordArticulo: ajuste('recordArticulo') ?? 0,
     palabras: estadisticasVocab().aprendidas,
     formas: estadisticasVerbos().dominadas,
-    pistasOidas: new Set(acts.filter((a) => a.tipo === 'escucha' && a.pista.startsWith('KB')).map((a) => a.pista)).size,
     speaking: acts.filter((a) => a.tipo === 'speaking').length,
     frasesClaras: new Set(acts.filter((a) => a.tipo === 'speaking' && a.modo === 'leer' && a.puntaje >= 0.9).map((a) => a.item)).size,
     testOk: !!ev?.todas.some((t) => t.tipo === 'test' && t.hecha),
@@ -188,6 +201,7 @@ async function revisar() {
   ocupado = true;
   try {
     const ev = await evaluarAhora();
+    const cap = ev?.cfg.capitulo ?? capituloActual();
     const ahora = {
       plan: ev?.cfg.inicio ?? null,
       tareas: new Set(ev ? ev.todas.filter((t) => t.hecha).map((t) => t.id) : []),
@@ -200,14 +214,16 @@ async function revisar() {
       const tareasNuevas = ev.todas.filter((t) => t.hecha && !previo.tareas.has(t.id));
       if (diasNuevos.length) {
         confeti();
-        aviso(ev.completo ? '🏆 Plan complete! Kapitel 7 is done.' : `📅 Day ${diasNuevos[0]} complete! Great job.`, 'bien');
+        aviso(ev.completo ? `🏆 Plan complete! Kapitel ${ev.numero} is done.` : `📅 Day ${diasNuevos[0]} complete! Great job.`, 'bien');
       } else if (tareasNuevas.length) aviso(`✓ Plan task done: ${tareasNuevas[0].texto}`, 'bien');
     }
     const primera = previo === null;
     previo = ahora;
-    const ctx = contexto(ev);
-    for (const l of LOGROS.filter((x) => !logros()[x.id] && x.cond(ctx))) {
-      desbloquearLogro(l.id);
+    const ctx = contexto(ev, await pistasLibro(cap));
+    for (const l of LOGROS) {
+      const id = idLogro(l, cap);
+      if (logros()[id] || !l.cond(ctx)) continue;
+      desbloquearLogro(id);
       if (!primera) mostrarLogro(l);
     }
   } finally {
@@ -219,7 +235,7 @@ async function revisar() {
 function ritmo(ev) {
   const min = ev.pendientesHoy.reduce((s, t) => s + t.minutos, 0);
   const n = ev.pendientesHoy.length;
-  if (ev.completo) return ['exito', ev.hoyIdx < ev.dias.length ? '🏆 Kapitel 7 done within the week! Fantastic work.' : '🏆 Kapitel 7 done! Fantastic work.'];
+  if (ev.completo) return ['exito', ev.hoyIdx < ev.dias.length ? `🏆 Kapitel ${ev.numero} done within the week! Fantastic work.` : `🏆 Kapitel ${ev.numero} done! Fantastic work.`];
   if (ev.hoyIdx < 0) return ['info', `Your week starts ${ev.hoyIdx === -1 ? 'tomorrow' : `on ${fechaCorta(ev.cfg.inicio)}`}. Want a head start? You can begin right now.`];
   if (ev.hoyIdx >= ev.dias.length) return ['atraso', `The week is over and ${cuantas(ev.total - ev.hechas, 'task')} ${ev.total - ev.hechas === 1 ? 'is' : 'are'} left. Finish them to close the chapter — you're almost there!`];
   if (ev.atrasadas.length) return ['atraso', `You're ${cuantas(ev.atrasadas.length, 'task')} behind. Do them today (≈ ${min} min with today's) and you're back on track.`];
@@ -241,7 +257,7 @@ function irA(hash) {
 }
 
 function iniciar(inicio) {
-  configPlan({ capitulo: 'k07', inicio, hora: ajuste('horaRecordatorio') ?? '19:00' });
+  configPlan({ capitulo: capituloActual(), inicio, hora: ajuste('horaRecordatorio') ?? '19:00' });
   irA('#/plan');
 }
 
@@ -270,11 +286,14 @@ function tiraSemana(ev) {
   }, h('span', { class: 'dia-sem' }, diaSemana(d.fecha)), h('span', { class: 'dia-num' }, d.estado === 'hecho' ? '✓' : d.n))));
 }
 
+// Para empezar el plan del capítulo que se mira (si había otro, lo reemplaza).
 function invitacion() {
+  const otro = configPlan() && !planDelActual() ? numeroCapitulo(configPlan().capitulo) : null;
   return h('section', { class: 'plan-card' },
     h('div', { class: 'plan-cab' }, h('span', { class: 'plan-ico' }, '📅'),
       h('div', { class: 'plan-cab-txt' }, h('h2', {}, 'One chapter a week'),
-        h('p', { class: 'plan-sub' }, 'A 7-day plan with about 50 minutes a day. Tasks tick themselves off as you do them.'))),
+        h('p', { class: 'plan-sub' }, `Kapitel ${numeroCapitulo()} in a 7-day plan with about 50 minutes a day. Tasks tick themselves off as you do them.`),
+        otro && h('p', { class: 'plan-sub' }, `Starting it replaces your Kapitel ${otro} plan. Your lessons and badges stay.`))),
     h('div', { class: 'fila-btn izq' },
       h('button', { class: 'btn primario', type: 'button', onclick: () => iniciar(hoyISO()) }, 'Start today'),
       h('button', { class: 'btn', type: 'button', onclick: () => iniciar(sumarDias(hoyISO(), 1)) }, 'Start tomorrow'),
@@ -283,7 +302,7 @@ function invitacion() {
 
 /** Tarjeta de la semana para la pantalla de inicio. */
 export async function tarjetaPlan() {
-  const ev = await evaluarAhora();
+  const ev = planDelActual() ? await evaluarAhora() : null;
   if (!ev) return invitacion();
   const [tono, texto] = ritmo(ev);
   const enCurso = ev.hoyIdx >= 0 && ev.hoyIdx < ev.dias.length;
@@ -296,7 +315,7 @@ export async function tarjetaPlan() {
   return h('section', { class: `plan-card ${tono}` },
     h('div', { class: 'plan-cab' },
       h('span', { class: 'plan-ico' }, ev.completo ? '🏆' : '📅'),
-      h('div', { class: 'plan-cab-txt' }, h('h2', {}, titulo), h('p', { class: 'plan-sub' }, `Kapitel 7 · ${fechaCorta(ev.cfg.inicio)} → ${fechaCorta(ev.fin)} · ${ev.hechas}/${ev.total} tasks`)),
+      h('div', { class: 'plan-cab-txt' }, h('h2', {}, titulo), h('p', { class: 'plan-sub' }, `Kapitel ${ev.numero} · ${fechaCorta(ev.cfg.inicio)} → ${fechaCorta(ev.fin)} · ${ev.hechas}/${ev.total} tasks`)),
       anillo(ev.hechas / ev.total, 52)),
     tiraSemana(ev),
     h('p', { class: `plan-msg ${tono}` }, texto),
@@ -334,9 +353,9 @@ export function calendario(ev) {
     const ini = aFecha(d.fecha);
     ini.setHours(hh, mm, 0, 0);
     const fin = new Date(ini.getTime() + d.minutos * 60000);
-    const detalle = [`Kapitel 7, day ${d.n} of ${ev.dias.length}: ${d.titulo} (≈ ${d.minutos} min)`, ...d.tareas.map((t) => `- ${t.texto} (${t.minutos} min)`), '', `Open the course: ${location.origin}${location.pathname}#/plan`].join('\n');
-    lineas.push('BEGIN:VEVENT', `UID:k07-${ev.cfg.inicio}-dia${d.n}@deutsch-a2.local`, `DTSTAMP:${sello}`, `DTSTART:${local(ini)}`, `DTEND:${local(fin)}`,
-      `SUMMARY:${escICS(`German: Kapitel 7, day ${d.n} – ${d.titulo}`)}`, `DESCRIPTION:${escICS(detalle)}`,
+    const detalle = [`Kapitel ${ev.numero}, day ${d.n} of ${ev.dias.length}: ${d.titulo} (≈ ${d.minutos} min)`, ...d.tareas.map((t) => `- ${t.texto} (${t.minutos} min)`), '', `Open the course: ${location.origin}${location.pathname}#/plan`].join('\n');
+    lineas.push('BEGIN:VEVENT', `UID:${ev.cfg.capitulo}-${ev.cfg.inicio}-dia${d.n}@deutsch-a2.local`, `DTSTAMP:${sello}`, `DTSTART:${local(ini)}`, `DTEND:${local(fin)}`,
+      `SUMMARY:${escICS(`German: Kapitel ${ev.numero}, day ${d.n} – ${d.titulo}`)}`, `DESCRIPTION:${escICS(detalle)}`,
       'BEGIN:VALARM', 'ACTION:DISPLAY', 'TRIGGER:-PT10M', `DESCRIPTION:${escICS('Time for German! 🇩🇪')}`, 'END:VALARM', 'END:VEVENT');
   }
   lineas.push('END:VCALENDAR');
@@ -353,7 +372,7 @@ function descargar(nombre, contenido, tipo) {
 }
 
 function descargarCalendario(ev) {
-  descargar(`deutsch-a2-kapitel-7-${ev.cfg.inicio}.ics`, calendario(ev), 'text/calendar;charset=utf-8');
+  descargar(`deutsch-a2-kapitel-${ev.numero}-${ev.cfg.inicio}.ics`, calendario(ev), 'text/calendar;charset=utf-8');
   aviso('Calendar file downloaded: open it to add the reminders.');
 }
 
@@ -382,7 +401,7 @@ const ORIGEN = {
 function resumenProgreso(p, nDias) {
   const i = p.plan ? diasEntre(p.plan.inicio, hoyISO()) : null;
   const dia = i === null ? 'Not started' : i < 0 ? `Starts ${fechaCorta(p.plan.inicio)}` : i < nDias ? `Day ${i + 1} of ${nDias}` : 'Week over';
-  return [`${p.xp} XP`, cuantas(rachaActual(p.racha), 'day'), dia, `${LOGROS.filter((l) => p.logros[l.id]).length} of ${LOGROS.length}`];
+  return [`${p.xp} XP`, cuantas(rachaActual(p.racha), 'day'), dia, `${Object.keys(p.logros).length} unlocked`];
 }
 
 // Muestra el resumen del archivo (o de la copia) al lado del progreso actual; resuelve true si se confirma.
@@ -490,10 +509,13 @@ function bloqueTraspaso() {
 
 // ---------- Pantalla del plan ----------
 export async function pantallaPlan(raiz) {
-  const ev = await evaluarAhora();
-  const vista = ev ?? (await evaluarAhora({ capitulo: 'k07', inicio: hoyISO(), hora: '19:00' }));
+  // El plan en curso, si es del capítulo que se mira; si no, cómo quedaría el de este capítulo.
+  const cap = capituloActual();
+  const n = numeroCapitulo(cap);
+  const ev = planDelActual() ? await evaluarAhora() : null;
+  const vista = ev ?? (await evaluarAhora({ capitulo: cap, inicio: hoyISO(), hora: '19:00' }));
   const cab = h('div', { class: 'seccion-cab' }, h('a', { class: 'btn-volver', href: '#/' }, '← Home'), h('h1', {}, 'Your week plan'),
-    h('p', { class: 'sub' }, ev ? `Kapitel 7 · ${fechaCorta(ev.cfg.inicio)} → ${fechaCorta(ev.fin)} · about 50 minutes a day` : 'Kapitel 7 in 7 days, about 50 minutes a day. This is how your week would look if you started today:'));
+    h('p', { class: 'sub' }, ev ? `Kapitel ${n} · ${fechaCorta(ev.cfg.inicio)} → ${fechaCorta(ev.fin)} · about 50 minutes a day` : `Kapitel ${n} in 7 days, about 50 minutes a day. This is how your week would look if you started today:`));
 
   const resumen = ev
     ? h('section', { class: `plan-card ${ritmo(ev)[0]}` },
@@ -511,9 +533,11 @@ export async function pantallaPlan(raiz) {
         h('span', { class: 'dia-min' }, `≈ ${d.minutos} min`)),
       h('ul', { class: 'tareas' }, d.tareas.map((t) => filaTarea(t)))))));
 
+  // Los logros generales y los de este capítulo.
   const obtenidos = logros();
-  const insignias = h('section', { class: 'bloque' }, h('h2', { class: 'bloque-tit' }, `Badges · ${LOGROS.filter((l) => obtenidos[l.id]).length}/${LOGROS.length}`),
-    h('div', { class: 'logros' }, LOGROS.map((l) => h('div', { class: `logro ${obtenidos[l.id] ? 'si' : 'no'}`, title: l.desc },
+  const delCapitulo = LOGROS.map((l) => ({ ...l, id: idLogro(l, cap), desc: l.porCapitulo ? `${l.desc} (Kapitel ${n})` : l.desc }));
+  const insignias = h('section', { class: 'bloque' }, h('h2', { class: 'bloque-tit' }, `Badges · ${delCapitulo.filter((l) => obtenidos[l.id]).length}/${delCapitulo.length}`),
+    h('div', { class: 'logros' }, delCapitulo.map((l) => h('div', { class: `logro ${obtenidos[l.id] ? 'si' : 'no'}`, title: l.desc },
       h('span', { class: 'logro-ico' }, l.icono), h('span', { class: 'logro-tit' }, l.titulo),
       h('span', { class: 'logro-desc' }, obtenidos[l.id] ? `Unlocked ${fechaCorta(obtenidos[l.id])}` : l.desc)))));
 

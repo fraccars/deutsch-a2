@@ -5,10 +5,13 @@ import { corregir } from './check.js';
 import { calificar, tarjeta, pendiente, sumarXP, ajuste, registrar } from './store.js';
 import { renderPaso } from './ejercicios.js';
 import { cargarJSON } from './archivos.js';
+import { capituloActual, porCapitulo, rutaDatos } from './capitulos.js';
 
+// Los verbos del capítulo actual (los entrenadores trabajan sobre el capítulo que se mira).
+const verbosDe = porCapitulo((cap) => cargarJSON(rutaDatos('verbos.json', cap)));
 let VERBOS = [];
 export async function cargarVerbos() {
-  if (!VERBOS.length) VERBOS = await cargarJSON('data/k07/verbos.json');
+  VERBOS = await verbosDe();
   return VERBOS;
 }
 
@@ -123,7 +126,7 @@ const MODOS = {
         let bien = 0;
         const sig = () => {
           if (i >= ronda.length) {
-            registrar({ tipo: 'ronda', area: 'verbos', modo: 'conjugar', tiempos: [...elegidos], aciertos: bien, total: ronda.length });
+            registrar({ tipo: 'ronda', cap: capituloActual(), area: 'verbos', modo: 'conjugar', tiempos: [...elegidos], aciertos: bien, total: ronda.length });
             if (bien === ronda.length) confeti();
             return cont.replaceChildren(h('div', { class: 'fin-ronda' }, h('div', { class: 'fin-num' }, `${bien} / ${ronda.length}`),
               h('div', { class: 'fila-btn' }, h('button', { class: 'btn primario', type: 'button', onclick: empezar }, 'Another round'), h('button', { class: 'btn', type: 'button', onclick: volver }, 'Back'))));
@@ -182,7 +185,7 @@ const MODOS = {
       let bien = 0;
       const sig = () => {
         if (i >= ronda.length) {
-          registrar({ tipo: 'ronda', area: 'verbos', modo: 'perfekt', aciertos: bien, total: ronda.length });
+          registrar({ tipo: 'ronda', cap: capituloActual(), area: 'verbos', modo: 'perfekt', aciertos: bien, total: ronda.length });
           if (bien === ronda.length) confeti();
           return cont.replaceChildren(h('div', { class: 'fin-ronda' }, h('div', { class: 'fin-num' }, `${bien} / ${ronda.length}`),
             h('div', { class: 'fila-btn' }, h('button', { class: 'btn primario', type: 'button', onclick: () => MODOS.perfekt.jugar(cont, volver) }, 'Another round'), h('button', { class: 'btn', type: 'button', onclick: volver }, 'Back'))));
@@ -242,7 +245,7 @@ const MODOS = {
         }
       }
       const paso = { tipo: 'armar', items: mezclar(items).slice(0, 8) };
-      const fin = (aciertos, total) => (registrar({ tipo: 'ronda', area: 'verbos', modo: 'oraciones', aciertos, total }), cont.replaceChildren(h('div', { class: 'fin-ronda' }, h('div', { class: 'fin-num' }, `${aciertos} / ${total}`),
+      const fin = (aciertos, total) => (registrar({ tipo: 'ronda', cap: capituloActual(), area: 'verbos', modo: 'oraciones', aciertos, total }), cont.replaceChildren(h('div', { class: 'fin-ronda' }, h('div', { class: 'fin-num' }, `${aciertos} / ${total}`),
         h('div', { class: 'fila-btn' }, h('button', { class: 'btn primario', type: 'button', onclick: () => MODOS.oraciones.jugar(cont, volver) }, 'Another round'), h('button', { class: 'btn', type: 'button', onclick: volver }, 'Back')))));
       cont.replaceChildren(await renderPaso(paso, { listo: fin }));
     },
@@ -303,7 +306,7 @@ const MODOS = {
           clearInterval(tm);
           if (!cont.isConnected) return;
           sumarXP(puntos);
-          registrar({ tipo: 'ronda', area: 'verbos', modo: 'reloj', puntos });
+          registrar({ tipo: 'ronda', cap: capituloActual(), area: 'verbos', modo: 'reloj', puntos });
           const previo = ajuste('recordVerbos') ?? 0;
           if (puntos > previo) (ajuste('recordVerbos', puntos), puntos > 0 && confeti());
           cont.replaceChildren(h('div', { class: 'fin-ronda' }, h('div', { class: 'fin-num' }, `${puntos} pts`), h('p', {}, `Best: ${Math.max(previo, puntos)}${puntos > previo ? ' (new record!)' : ''}`),

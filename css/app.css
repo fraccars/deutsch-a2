@@ -268,6 +268,7 @@ button { font: inherit; color: inherit; }
 /* Escribir */
 .escribir { width: 100%; font: inherit; padding: 12px; border-radius: 12px; border: 1.5px solid var(--borde); background: var(--sup2); color: var(--texto); margin-bottom: 10px; }
 .modelo { margin-top: 14px; border-top: 1px solid var(--borde); padding-top: 12px; display: grid; gap: 8px; }
+.modelo p { margin: 0; }
 .modelo-tit { font-weight: 700; font-size: 0.9rem; color: var(--suave); }
 .checklist label { display: block; padding: 3px 0; }
 
@@ -612,3 +613,6 @@ a.estado-item { color: inherit; text-decoration: none; }
 }
 .version-nueva .btn { padding: 6px 14px; }
 @keyframes version-entra { from { opacity: 0; transform: translate(-50%, 12px); } }
+
+/* Capítulos: para pasar de uno a otro desde el inicio */
+.capitulos { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }

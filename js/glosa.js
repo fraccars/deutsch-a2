@@ -9,10 +9,14 @@ import { h, claseArticulo, aviso } from './ui.js';
 import { decir } from './audio.js';
 import { ajuste } from './store.js';
 import { cargarJSON } from './archivos.js';
+import { indiceCapitulos, rutaDatos } from './capitulos.js';
 
+// Los glosarios de todos los capítulos juntos: las palabras de un capítulo vuelven en los
+// siguientes. Si una forma está en varios, manda el del capítulo más nuevo.
 let GLOSA = {};
 export async function cargarGlosario() {
-  GLOSA = await cargarJSON('data/k07/glosario.json').catch(() => ({}));
+  const glosarios = await Promise.all(indiceCapitulos().map((c) => cargarJSON(rutaDatos('glosario.json', c.id)).catch(() => ({}))));
+  GLOSA = Object.assign({}, ...glosarios);
 }
 
 const TOKEN = /\p{L}[\p{L}-]*/gu;

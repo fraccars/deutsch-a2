@@ -1,14 +1,16 @@
 // Datos del capítulo y progreso por lección (lo usan la app y el plan semanal).
 import { pasoHecho, leer } from './store.js';
 import { cargarJSON } from './archivos.js';
+import { porCapitulo, rutaDatos } from './capitulos.js';
 
-let CAP = null;
-export async function cargarCapitulo() {
-  if (!CAP) CAP = await cargarJSON('data/k07/lecciones.json');
-  return CAP;
-}
+// Las lecciones de un capítulo (el actual, si no se dice cuál). Cada lección sabe de qué
+// capítulo es, para el id de sus pasos.
+export const cargarCapitulo = porCapitulo((cap) => cargarJSON(rutaDatos('lecciones.json', cap)).then((c) => {
+  for (const l of c.lecciones) l.cap = c.id;
+  return c;
+}));
 
-export const idPaso = (lec, i) => `${CAP.id}/${lec.id}/${i}`;
+export const idPaso = (lec, i) => `${lec.cap}/${lec.id}/${i}`;
 export const progresoLeccion = (lec) => lec.pasos.filter((_, i) => pasoHecho(idPaso(lec, i))).length / lec.pasos.length;
 
 // Mejor resultado promedio de los pasos que se corrigen (sin teoría ni escritura libre).
